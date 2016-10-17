@@ -34,6 +34,7 @@ import com.yahoo.ycsb.generator.SkewedLatestGenerator;
 import com.yahoo.ycsb.generator.UniformIntegerGenerator;
 import com.yahoo.ycsb.generator.ZipfianGenerator;
 import com.yahoo.ycsb.measurements.Measurements;
+import org.codehaus.jackson.map.util.JSONPObject;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -539,6 +540,19 @@ public class CoreWorkload extends Workload {
   }
 
   /**
+   * Builds a value for a randomly chosen field.
+   */
+  private HashMap<String, String> buildSingleJsonValue(String key) {
+    HashMap<String, String> value = new HashMap<String, String>();
+
+    String fieldkey = fieldnames.get(fieldchooser.nextValue().intValue());
+    String data = "{'name':'mkyong', 'original': { 'key':'" + fieldkey + "'}, 'key': '" + key + "'}";
+    value.put(fieldkey, data);
+
+    return value;
+  }
+
+  /**
    * Builds values for all fields.
    */
   private HashMap<String, ByteIterator> buildValues(String key) {
@@ -552,6 +566,19 @@ public class CoreWorkload extends Workload {
         // fill with random data
         data = new RandomByteIterator(fieldlengthgenerator.nextValue().longValue());
       }
+      values.put(fieldkey, data);
+    }
+    return values;
+  }
+
+  /**
+   * Builds values for all fields.
+   */
+  private HashMap<String, String> buildJsonValues(String key) {
+    HashMap<String, String> values = new HashMap<String, String>();
+    for (String fieldkey : fieldnames) {
+//      String data = "{'name':'mkyong', 'original': { 'key':'" + fieldkey + "'}, 'key': '" + key + "'}";
+      String data = "{\"name\":\"mkyong\", \"original\": { \"key\":\"" + fieldkey + "\"}, \"key\": \"" + key + "\"}";
       values.put(fieldkey, data);
     }
     return values;
@@ -583,14 +610,20 @@ public class CoreWorkload extends Workload {
    */
   @Override
   public boolean doInsert(DB db, Object threadstate) {
+    System.err.println("|||||||||||||||||||||||||||||||||||||||||||||");
     int keynum = keysequence.nextValue().intValue();
     String dbkey = buildKeyName(keynum);
-    HashMap<String, ByteIterator> values = buildValues(dbkey);
 
+    /*
+      Customising the workload value
+     */
+//    HashMap<String, ByteIterator> values1 = buildValues(dbkey);
+    HashMap<String, String> values = buildJsonValues(dbkey);
     Status status;
     int numOfRetries = 0;
     do {
-      status = db.insert(table, dbkey, values);
+      status = db.insertJson(table, dbkey, values);
+//      status = db.insert(table, dbkey, values);
       if (null != status && status.isOk()) {
         break;
       }
@@ -788,17 +821,17 @@ public class CoreWorkload extends Workload {
 
     String keyname = buildKeyName(keynum);
 
-    HashMap<String, ByteIterator> values;
+    HashMap<String, String> values;
 
     if (writeallfields) {
       // new data for all the fields
-      values = buildValues(keyname);
+      values = buildJsonValues(keyname);
     } else {
       // update a random field
-      values = buildSingleValue(keyname);
+      values = buildSingleJsonValue(keyname);
     }
 
-    db.update(table, keyname, values);
+    db.updateJson(table, keyname, values);
   }
 
   public void doTransactionInsert(DB db) {
@@ -808,8 +841,8 @@ public class CoreWorkload extends Workload {
     try {
       String dbkey = buildKeyName(keynum);
 
-      HashMap<String, ByteIterator> values = buildValues(dbkey);
-      db.insert(table, dbkey, values);
+      HashMap<String, String> values = buildJsonValues(dbkey);
+      db.insertJson(table, dbkey, values);
     } finally {
       transactioninsertkeysequence.acknowledge(keynum);
     }

@@ -213,6 +213,37 @@ public class BasicDB extends DB
 		return Status.OK;
 	}
 
+  /**
+   * Update a record in the database. Any field/value pairs in the specified values HashMap will be written into the record with the specified
+   * record key, overwriting any existing values with the same field name.
+   *
+   * @param table The name of the table
+   * @param key The record key of the record to write.
+   * @param values A HashMap of field/value pairs to update in the record
+   * @return Zero on success, a non-zero error code on error
+   */
+  public Status updateJson(String table, String key, HashMap<String,String> values)
+  {
+    delay();
+
+    if (verbose)
+    {
+      StringBuilder sb = getStringBuilder();
+      sb.append("UPDATE ").append(table).append(" ").append(key).append(" [ ");
+      if (values!=null)
+      {
+        for (Map.Entry<String, String> entry : values.entrySet())
+        {
+          sb.append(entry.getKey()).append("=").append(entry.getValue()).append(" ");
+        }
+      }
+      sb.append("]");
+      System.out.println(sb);
+    }
+
+    return Status.OK;
+  }
+
 	/**
 	 * Insert a record in the database. Any field/value pairs in the specified values HashMap will be written into the record with the specified
 	 * record key.
@@ -244,6 +275,38 @@ public class BasicDB extends DB
 
 		return Status.OK;
 	}
+
+  /**
+   * Insert a record in the database. Any field/value pairs in the specified values HashMap will be written into the record with the specified
+   * record key.
+   *
+   * @param table The name of the table
+   * @param key The record key of the record to insert.
+   * @param values A HashMap of field/value pairs to insert in the record
+   * @return Zero on success, a non-zero error code on error
+   */
+  public Status insertJson(String table, String key, HashMap<String,String> values)
+  {
+    delay();
+
+    if (verbose)
+    {
+      StringBuilder sb = getStringBuilder();
+      sb.append("INSERT ").append(table).append(" ").append(key).append(" [ ");
+      if (values!=null)
+      {
+        for (Map.Entry<String, String> entry : values.entrySet())
+        {
+          sb.append(entry.getKey()).append("=").append(entry.getValue()).append(" ");
+        }
+      }
+
+      sb.append("]");
+      System.out.println(sb);
+    }
+
+    return Status.OK;
+  }
 
 
 	/**

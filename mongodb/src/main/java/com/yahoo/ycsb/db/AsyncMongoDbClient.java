@@ -38,6 +38,8 @@ import com.allanbank.mongodb.builder.BatchedWrite;
 import com.allanbank.mongodb.builder.BatchedWriteMode;
 import com.allanbank.mongodb.builder.Find;
 import com.allanbank.mongodb.builder.Sort;
+import com.mongodb.DBObject;
+import com.mongodb.util.JSON;
 import com.yahoo.ycsb.ByteIterator;
 import com.yahoo.ycsb.DB;
 import com.yahoo.ycsb.DBException;
@@ -314,6 +316,85 @@ public class AsyncMongoDbClient extends DB {
   }
 
   /**
+   * Insert a record in the database. Any field/value pairs in the specified
+   * values HashMap will be written into the record with the specified record
+   * key.
+   *
+   * @param table
+   *          The name of the table
+   * @param key
+   *          The record key of the record to insert.
+   * @param values
+   *          A HashMap of field/value pairs to insert in the record
+   * @return Zero on success, a non-zero error code on error. See the {@link DB}
+   *         class's description for a discussion of error codes.
+   */
+  @Override
+  public final Status insertJson(final String table, final String key,
+                             final HashMap<String, String> values) {
+    try {
+      final MongoCollection collection = database.getCollection(table);
+      final DocumentBuilder toInsert =
+          DOCUMENT_BUILDER.get().reset().add("_id", key);
+      final Document query = toInsert.build();
+      for (final Map.Entry<String, String> entry : values.entrySet()) {
+        DBObject dbObject = (DBObject) JSON.parse(entry.getValue());
+        toInsert.add(entry.getKey(), dbObject);
+      }
+
+      // Do an upsert.
+      if (batchSize <= 1) {
+        long result;
+        if (useUpsert) {
+          result = collection.update(query, toInsert,
+              /* multi= */false, /* upsert= */true, writeConcern);
+        } else {
+          // Return is not stable pre-SERVER-4381. No exception is success.
+          collection.insert(writeConcern, toInsert);
+          result = 1;
+        }
+        return result == 1 ? Status.OK : Status.NOT_FOUND;
+      }
+
+      // Use a bulk insert.
+      try {
+        if (useUpsert) {
+          batchedWrite.update(query, toInsert, /* multi= */false,
+              /* upsert= */true);
+        } else {
+          batchedWrite.insert(toInsert);
+        }
+        batchedWriteCount += 1;
+
+        if (batchedWriteCount < batchSize) {
+          return Status.BATCHED_OK;
+        }
+
+        long count = collection.write(batchedWrite);
+        if (count == batchedWriteCount) {
+          batchedWrite.reset().mode(BatchedWriteMode.REORDERED);
+          batchedWriteCount = 0;
+          return Status.OK;
+        }
+
+        System.err.println("Number of inserted documents doesn't match the "
+            + "number sent, " + count + " inserted, sent " + batchedWriteCount);
+        batchedWrite.reset().mode(BatchedWriteMode.REORDERED);
+        batchedWriteCount = 0;
+        return Status.ERROR;
+      } catch (Exception e) {
+        System.err.println("Exception while trying bulk insert with "
+            + batchedWriteCount);
+        e.printStackTrace();
+        return Status.ERROR;
+      }
+    } catch (final Exception e) {
+      e.printStackTrace();
+      return Status.ERROR;
+    }
+  }
+
+  /**
    * Read a record from the database. Each field/value pair from the result will
    * be stored in a HashMap.
    * 
@@ -459,6 +540,42 @@ public class AsyncMongoDbClient extends DB {
 
       for (final Map.Entry<String, ByteIterator> entry : values.entrySet()) {
         fieldsToSet.add(entry.getKey(), entry.getValue().toArray());
+      }
+      final long res =
+          collection.update(query, update, false, false, writeConcern);
+      return writeConcern == Durability.NONE || res == 1 ? Status.OK : Status.NOT_FOUND;
+    } catch (final Exception e) {
+      System.err.println(e.toString());
+      return Status.ERROR;
+    }
+  }
+
+  /**
+   * Update a record in the database. Any field/value pairs in the specified
+   * values HashMap will be written into the record with the specified record
+   * key, overwriting any existing values with the same field name.
+   *
+   * @param table
+   *          The name of the table
+   * @param key
+   *          The record key of the record to write.
+   * @param values
+   *          A HashMap of field/value pairs to update in the record
+   * @return Zero on success, a non-zero error code on error. See the {@link DB}
+   *         class's description for a discussion of error codes.
+   */
+  @Override
+  public final Status updateJson(final String table, final String key,
+                             final HashMap<String, String> values) {
+    try {
+      final MongoCollection collection = database.getCollection(table);
+      final DocumentBuilder query = BuilderFactory.start().add("_id", key);
+      final DocumentBuilder update = BuilderFactory.start();
+      final DocumentBuilder fieldsToSet = update.push("$set");
+
+      for (final Map.Entry<String, String> entry : values.entrySet()) {
+        DBObject dbObject = (DBObject) JSON.parse(entry.getValue());
+        fieldsToSet.add(entry.getKey(), dbObject);
       }
       final long res =
           collection.update(query, update, false, false, writeConcern);

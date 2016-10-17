@@ -24,10 +24,7 @@
  */
 package com.yahoo.ycsb.db;
 
-import com.mongodb.MongoClient;
-import com.mongodb.MongoClientURI;
-import com.mongodb.ReadPreference;
-import com.mongodb.WriteConcern;
+import com.mongodb.*;
 import com.mongodb.client.FindIterable;
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoCursor;
@@ -37,6 +34,7 @@ import com.mongodb.client.model.UpdateOneModel;
 import com.mongodb.client.model.UpdateOptions;
 import com.mongodb.client.result.DeleteResult;
 import com.mongodb.client.result.UpdateResult;
+import com.mongodb.util.JSON;
 import com.yahoo.ycsb.ByteArrayByteIterator;
 import com.yahoo.ycsb.ByteIterator;
 import com.yahoo.ycsb.DB;
@@ -300,6 +298,70 @@ public class MongoDbClient extends DB {
   }
 
   /**
+   * Insert a record in the database. Any field/value pairs in the specified
+   * values HashMap will be written into the record with the specified record
+   * key.
+   *
+   * @param table
+   *          The name of the table
+   * @param key
+   *          The record key of the record to insert.
+   * @param values
+   *          A HashMap of field/value pairs to insert in the record
+   * @return Zero on success, a non-zero error code on error. See the {@link DB}
+   *         class's description for a discussion of error codes.
+   */
+  public Status insertJson(String table, String key,
+                       HashMap<String, String> values) {
+    try {
+      MongoCollection<Document> collection = database.getCollection(table);
+      Document toInsert = new Document("_id", key);
+      for (Map.Entry<String, String> entry : values.entrySet()) {
+        DBObject dbObject = (DBObject) JSON.parse(entry.getValue());
+        toInsert.put(entry.getKey(), dbObject);
+      }
+
+      if (batchSize == 1) {
+        if (useUpsert) {
+          // this is effectively an insert, but using an upsert instead due
+          // to current inability of the framework to clean up after itself
+          // between test runs.
+          collection.replaceOne(new Document("_id", toInsert.get("_id")),
+              toInsert, UPDATE_WITH_UPSERT);
+        } else {
+          collection.insertOne(toInsert);
+        }
+      } else {
+        bulkInserts.add(toInsert);
+        if (bulkInserts.size() == batchSize) {
+          if (useUpsert) {
+            List<UpdateOneModel<Document>> updates =
+                new ArrayList<UpdateOneModel<Document>>(bulkInserts.size());
+            for (Document doc : bulkInserts) {
+              updates.add(new UpdateOneModel<Document>(
+                  new Document("_id", doc.get("_id")),
+                  doc, UPDATE_WITH_UPSERT));
+            }
+            collection.bulkWrite(updates);
+          } else {
+            collection.insertMany(bulkInserts, INSERT_UNORDERED);
+          }
+          bulkInserts.clear();
+        } else {
+          return Status.BATCHED_OK;
+        }
+      }
+      return Status.OK;
+    } catch (Exception e) {
+      System.err.println("Exception while trying bulk insert with "
+          + bulkInserts.size());
+      e.printStackTrace();
+      return Status.ERROR;
+    }
+
+  }
+
+  /**
    * Read a record from the database. Each field/value pair from the result will
    * be stored in a HashMap.
    * 
@@ -319,7 +381,7 @@ public class MongoDbClient extends DB {
     try {
       MongoCollection<Document> collection = database.getCollection(table);
       Document query = new Document("_id", key);
-
+//      Document query = new Document("field1.key", key);
       FindIterable<Document> findIterable = collection.find(query);
 
       if (fields != null) {
@@ -436,6 +498,45 @@ public class MongoDbClient extends DB {
       Document fieldsToSet = new Document();
       for (Map.Entry<String, ByteIterator> entry : values.entrySet()) {
         fieldsToSet.put(entry.getKey(), entry.getValue().toArray());
+      }
+      Document update = new Document("$set", fieldsToSet);
+
+      UpdateResult result = collection.updateOne(query, update);
+      if (result.wasAcknowledged() && result.getMatchedCount() == 0) {
+        System.err.println("Nothing updated for key " + key);
+        return Status.NOT_FOUND;
+      }
+      return Status.OK;
+    } catch (Exception e) {
+      System.err.println(e.toString());
+      return Status.ERROR;
+    }
+  }
+
+  /**
+   * Update a record in the database. Any field/value pairs in the specified
+   * values HashMap will be written into the record with the specified record
+   * key, overwriting any existing values with the same field name.
+   *
+   * @param table
+   *          The name of the table
+   * @param key
+   *          The record key of the record to write.
+   * @param values
+   *          A HashMap of field/value pairs to update in the record
+   * @return Zero on success, a non-zero error code on error. See this class's
+   *         description for a discussion of error codes.
+   */
+  public Status updateJson(String table, String key,
+                       HashMap<String, String> values) {
+    try {
+      MongoCollection<Document> collection = database.getCollection(table);
+
+      Document query = new Document("_id", key);
+      Document fieldsToSet = new Document();
+      for (Map.Entry<String, String> entry : values.entrySet()) {
+        DBObject dbObject = (DBObject) JSON.parse(entry.getValue());
+        fieldsToSet.put(entry.getKey(), dbObject);
       }
       Document update = new Document("$set", fieldsToSet);
 

@@ -135,6 +135,21 @@ public class GoodBadUglyDB extends DB {
     }
 
     /**
+     * Update a record in the database. Any field/value pairs in the specified values HashMap will be written into the
+     * record with the specified record key, overwriting any existing values with the same field name.
+     *
+     * @param table The name of the table
+     * @param key The record key of the record to write.
+     * @param values A HashMap of field/value pairs to update in the record
+     * @return Zero on success, a non-zero error code on error
+     */
+    public Status updateJson(String table, String key, HashMap<String, String> values) {
+      delay();
+
+      return Status.OK;
+    }
+
+    /**
      * Insert a record in the database. Any field/value pairs in the specified values HashMap will be written into the
      * record with the specified record key.
      *
@@ -146,6 +161,11 @@ public class GoodBadUglyDB extends DB {
     public Status insert(String table, String key, HashMap<String, ByteIterator> values) {
         delay();
         return Status.OK;
+    }
+
+    public Status insertJson(String table, String key, HashMap<String, String> values) {
+      delay();
+      return Status.OK;
     }
 
     /**

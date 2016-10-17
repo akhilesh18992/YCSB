@@ -222,6 +222,29 @@ public class DBWrapper extends DB
   }
 
   /**
+   * Update a record in the database. Any field/value pairs in the specified values HashMap will be written into the record with the specified
+   * record key, overwriting any existing values with the same field name.
+   *
+   * @param table The name of the table
+   * @param key The record key of the record to write.
+   * @param values A HashMap of field/value pairs to update in the record
+   * @return The result of the operation.
+   */
+  public Status updateJson(String table, String key,
+                       HashMap<String,String> values)
+  {
+    try (final TraceScope span = _tracer.newScope(SCOPE_STRING_UPDATE)) {
+      long ist=_measurements.getIntendedtartTimeNs();
+      long st = System.nanoTime();
+      Status res=_db.updateJson(table,key,values);
+      long en=System.nanoTime();
+      measure("UPDATE", res, ist, st, en);
+      _measurements.reportStatus("UPDATE", res);
+      return res;
+    }
+  }
+
+  /**
    * Insert a record in the database. Any field/value pairs in the specified
    * values HashMap will be written into the record with the specified
    * record key.
@@ -238,6 +261,30 @@ public class DBWrapper extends DB
       long ist=_measurements.getIntendedtartTimeNs();
       long st = System.nanoTime();
       Status res=_db.insert(table,key,values);
+      long en=System.nanoTime();
+      measure("INSERT", res, ist, st, en);
+      _measurements.reportStatus("INSERT", res);
+      return res;
+    }
+  }
+
+  /**
+   * Insert a record in the database. Any field/value pairs in the specified
+   * values HashMap will be written into the record with the specified
+   * record key.
+   *
+   * @param table The name of the table
+   * @param key The record key of the record to insert.
+   * @param values A HashMap of field/value pairs to insert in the record
+   * @return The result of the operation.
+   */
+  public Status insertJson(String table, String key,
+                       HashMap<String,String> values)
+  {
+    try (final TraceScope span = _tracer.newScope(SCOPE_STRING_INSERT)) {
+      long ist=_measurements.getIntendedtartTimeNs();
+      long st = System.nanoTime();
+      Status res=_db.insertJson(table,key,values);
       long en=System.nanoTime();
       measure("INSERT", res, ist, st, en);
       _measurements.reportStatus("INSERT", res);

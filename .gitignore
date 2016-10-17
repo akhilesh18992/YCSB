@@ -2,7 +2,7 @@
 target
 
 # ignore output files from testing
-output*
+#output*
 
 # ignore standard Eclipse files
 .project

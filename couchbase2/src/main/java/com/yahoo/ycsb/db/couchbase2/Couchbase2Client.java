@@ -337,6 +337,27 @@ public class Couchbase2Client extends DB {
     }
   }
 
+  @Override
+  public Status updateJson(final String table, final String key, final HashMap<String, String> values) {
+    if (upsert) {
+      return upsertJson(table, key, values);
+    }
+
+    try {
+      String docId = formatId(table, key);
+      if (kv) {
+        System.err.println("||||||||||||||||||||||||");
+//        return updateKv(docId, values);
+        return updateN1qlJson(docId, values);
+      } else {
+        return updateN1qlJson(docId, values);
+      }
+    } catch (Exception ex) {
+      ex.printStackTrace();
+      return Status.ERROR;
+    }
+  }
+
   /**
    * Performs the {@link #update(String, String, HashMap)} operation via Key/Value ("replace").
    *
@@ -380,6 +401,33 @@ public class Couchbase2Client extends DB {
     return Status.OK;
   }
 
+  /**
+   * Performs the {@link #update(String, String, HashMap)} operation via N1QL ("UPDATE").
+   *
+   * If this option should be used, the "-p couchbase.kv=false" property must be set.
+   *
+   * @param docId the document ID
+   * @param values the values to update the document with.
+   * @return The result of the operation.
+   */
+  private Status updateN1qlJson(final String docId, final HashMap<String, String> values)
+    throws Exception {
+    String fields = encodeN1qlJsonFields(values);
+    String updateQuery = "UPDATE `" + bucketName + "` USE KEYS [$1] SET " + fields;
+
+    N1qlQueryResult queryResult = bucket.query(N1qlQuery.parameterized(
+        updateQuery,
+        JsonArray.from(docId),
+        N1qlParams.build().adhoc(adhoc).maxParallelism(maxParallelism)
+    ));
+
+    if (!queryResult.parseSuccess() || !queryResult.finalSuccess()) {
+      throw new DBException("Error while parsing N1QL Result. Query: " + updateQuery
+        + ", Errors: " + queryResult.errors());
+    }
+    return Status.OK;
+  }
+
   @Override
   public Status insert(final String table, final String key, final HashMap<String, ByteIterator> values) {
     if (upsert) {
@@ -392,6 +440,27 @@ public class Couchbase2Client extends DB {
         return insertKv(docId, values);
       } else {
         return insertN1ql(docId, values);
+      }
+    } catch (Exception ex) {
+      ex.printStackTrace();
+      return Status.ERROR;
+    }
+  }
+
+  @Override
+  public Status insertJson(final String table, final String key, final HashMap<String, String> values) {
+    if (upsert) {
+      return upsertJson(table, key, values);
+    }
+
+    try {
+      String docId = formatId(table, key);
+      if (kv) {
+        System.err.println("kkkkkkkkkkkkkkkkkkk");
+        return insertKvJson(docId, values);
+      } else {
+        System.err.println("nnnnnnnnnnnnnnnnnnnn");
+        return insertN1qlJson(docId, values);
       }
     } catch (Exception ex) {
       ex.printStackTrace();
@@ -461,6 +530,67 @@ public class Couchbase2Client extends DB {
   }
 
   /**
+   * Performs the {@link #insert(String, String, HashMap)} operation via Key/Value ("INSERT").
+   *
+   * Note that during the "load" phase it makes sense to retry TMPFAILS (so that even if the server is
+   * overloaded temporarily the ops will succeed eventually). The current code will retry TMPFAILs
+   * for maximum of one minute and then bubble up the error.
+   *
+   * @param docId the document ID
+   * @param values the values to update the document with.
+   * @return The result of the operation.
+   */
+  private Status insertKvJson(final String docId, final HashMap<String, String> values) {
+    int tries = 60; // roughly 60 seconds with the 1 second sleep, not 100% accurate.
+
+    for(int i = 0; i < tries; i++) {
+      try {
+        waitForMutationResponse(bucket.async().insert(
+            RawJsonDocument.create(docId, documentExpiry, encodeJson(values)),
+            persistTo,
+            replicateTo
+        ));
+        return Status.OK;
+      } catch (TemporaryFailureException ex) {
+        try {
+          Thread.sleep(1000);
+        } catch (InterruptedException e) {
+          throw new RuntimeException("Interrupted while sleeping on TMPFAIL backoff.", ex);
+        }
+      }
+    }
+
+    throw new RuntimeException("Still receiving TMPFAIL from the server after trying " + tries + " times. " +
+      "Check your server.");
+  }
+
+  /**
+   * Performs the {@link #insert(String, String, HashMap)} operation via N1QL ("INSERT").
+   *
+   * If this option should be used, the "-p couchbase.kv=false" property must be set.
+   *
+   * @param docId the document ID
+   * @param values the values to update the document with.
+   * @return The result of the operation.
+   */
+  private Status insertN1qlJson(final String docId, final HashMap<String, String> values)
+    throws Exception {
+    String insertQuery = "INSERT INTO `" + bucketName + "`(KEY,VALUE) VALUES ($1,$2)";
+    System.err.println("===================================================");
+    N1qlQueryResult queryResult = bucket.query(N1qlQuery.parameterized(
+        insertQuery,
+        JsonArray.from(docId, valuesToJsonObjectJson(values)),
+        N1qlParams.build().adhoc(adhoc).maxParallelism(maxParallelism)
+    ));
+
+    if (!queryResult.parseSuccess() || !queryResult.finalSuccess()) {
+      throw new DBException("Error while parsing N1QL Result. Query: " + insertQuery
+        + ", Errors: " + queryResult.errors());
+    }
+    return Status.OK;
+  }
+
+  /**
    * Performs an upsert instead of insert or update using either Key/Value or N1QL.
    *
    * If this option should be used, the "-p couchbase.upsert=true" property must be set.
@@ -477,6 +607,30 @@ public class Couchbase2Client extends DB {
         return upsertKv(docId, values);
       } else {
         return upsertN1ql(docId, values);
+      }
+    } catch (Exception ex) {
+      ex.printStackTrace();
+      return Status.ERROR;
+    }
+  }
+
+  /**
+   * Performs an upsert instead of insert or update using either Key/Value or N1QL.
+   *
+   * If this option should be used, the "-p couchbase.upsert=true" property must be set.
+   *
+   * @param table The name of the table
+   * @param key The record key of the record to insert.
+   * @param values A HashMap of field/value pairs to insert in the record
+   * @return The result of the operation.
+   */
+  private Status upsertJson(final String table, final String key, final HashMap<String, String> values) {
+    try {
+      String docId = formatId(table, key);
+      if (kv) {
+        return upsertKvJson(docId, values);
+      } else {
+        return upsertN1qlJson(docId, values);
       }
     } catch (Exception ex) {
       ex.printStackTrace();
@@ -503,6 +657,24 @@ public class Couchbase2Client extends DB {
   }
 
   /**
+   * Performs the {@link #upsert(String, String, HashMap)} operation via Key/Value ("upsert").
+   *
+   * If this option should be used, the "-p couchbase.upsert=true" property must be set.
+   *
+   * @param docId the document ID
+   * @param values the values to update the document with.
+   * @return The result of the operation.
+   */
+  private Status upsertKvJson(final String docId, final HashMap<String, String> values) {
+    waitForMutationResponse(bucket.async().upsert(
+        RawJsonDocument.create(docId, documentExpiry, encodeJson(values)),
+        persistTo,
+        replicateTo
+    ));
+    return Status.OK;
+  }
+
+  /**
    * Performs the {@link #upsert(String, String, HashMap)} operation via N1QL ("UPSERT").
    *
    * If this option should be used, the "-p couchbase.upsert=true -p couchbase.kv=false" properties must be set.
@@ -518,6 +690,32 @@ public class Couchbase2Client extends DB {
     N1qlQueryResult queryResult = bucket.query(N1qlQuery.parameterized(
         upsertQuery,
         JsonArray.from(docId, valuesToJsonObject(values)),
+        N1qlParams.build().adhoc(adhoc).maxParallelism(maxParallelism)
+    ));
+
+    if (!queryResult.parseSuccess() || !queryResult.finalSuccess()) {
+      throw new DBException("Error while parsing N1QL Result. Query: " + upsertQuery
+        + ", Errors: " + queryResult.errors());
+    }
+    return Status.OK;
+  }
+
+  /**
+   * Performs the {@link #upsert(String, String, HashMap)} operation via N1QL ("UPSERT").
+   *
+   * If this option should be used, the "-p couchbase.upsert=true -p couchbase.kv=false" properties must be set.
+   *
+   * @param docId the document ID
+   * @param values the values to update the document with.
+   * @return The result of the operation.
+   */
+  private Status upsertN1qlJson(final String docId, final HashMap<String, String> values)
+    throws Exception {
+    String upsertQuery = "UPSERT INTO `" + bucketName + "`(KEY,VALUE) VALUES ($1,$2)";
+
+    N1qlQueryResult queryResult = bucket.query(N1qlQuery.parameterized(
+        upsertQuery,
+        JsonArray.from(docId, valuesToJsonObjectJson(values)),
         N1qlParams.build().adhoc(adhoc).maxParallelism(maxParallelism)
     ));
 
@@ -755,6 +953,28 @@ public class Couchbase2Client extends DB {
   }
 
   /**
+   * Helper method to turn the values into a String, used with {@link #upsertN1ql(String, HashMap)}.
+   *
+   * @param values the values to encode.
+   * @return the encoded string.
+   */
+  private static String encodeN1qlJsonFields(final HashMap<String, String> values) {
+    if (values.isEmpty()) {
+      return "";
+    }
+
+    StringBuilder sb = new StringBuilder();
+    for (Map.Entry<String, String> entry : values.entrySet()) {
+      String raw = entry.getValue().toString();
+//      String escaped = raw.replace("\"", "\\\"").replace("\'", "\\\'");
+//      sb.append(entry.getKey()).append("=\"").append(escaped).append("\" ");
+      sb.append(entry.getKey()).append("=").append(raw).append(" ");
+    }
+    String toReturn = sb.toString();
+    return toReturn.substring(0, toReturn.length() - 1);
+  }
+
+  /**
    * Helper method to turn the map of values into a {@link JsonObject} for further use.
    *
    * @param values the values to transform.
@@ -764,6 +984,22 @@ public class Couchbase2Client extends DB {
     JsonObject result = JsonObject.create();
     for (Map.Entry<String, ByteIterator> entry : values.entrySet()) {
       result.put(entry.getKey(), entry.getValue().toString());
+    }
+    return result;
+  }
+
+  /**
+   * Helper method to turn the map of values into a {@link JsonObject} for further use.
+   *
+   * @param values the values to transform.
+   * @return the created json object.
+   */
+  private static JsonObject valuesToJsonObjectJson(final HashMap<String, String> values) {
+    JsonObject result = JsonObject.create();
+    for (Map.Entry<String, String> entry : values.entrySet()) {
+      System.err.println(entry.getValue().toString());
+      System.err.println(JsonObject.fromJson(entry.getValue().toString()));
+      result.put(entry.getKey(), JsonObject.fromJson(entry.getValue().toString()));
     }
     return result;
   }
@@ -883,6 +1119,29 @@ public class Couchbase2Client extends DB {
     HashMap<String, String> stringMap = StringByteIterator.getStringMap(source);
     ObjectNode node = JacksonTransformers.MAPPER.createObjectNode();
     for (Map.Entry<String, String> pair : stringMap.entrySet()) {
+      node.put(pair.getKey(), pair.getValue());
+    }
+    JsonFactory jsonFactory = new JsonFactory();
+    Writer writer = new StringWriter();
+    try {
+      JsonGenerator jsonGenerator = jsonFactory.createGenerator(writer);
+      JacksonTransformers.MAPPER.writeTree(jsonGenerator, node);
+    } catch (Exception e) {
+      throw new RuntimeException("Could not encode JSON value");
+    }
+    return writer.toString();
+  }
+
+  /**
+   * Encode the source into a String for storage.
+   *
+   * @param source the source value.
+   * @return the encoded string.
+   */
+  private String encodeJson(final HashMap<String, String> source) {
+//    HashMap<String, String> stringMap = StringByteIterator.getStringMap(source);
+    ObjectNode node = JacksonTransformers.MAPPER.createObjectNode();
+    for (Map.Entry<String, String> pair : source.entrySet()) {
       node.put(pair.getKey(), pair.getValue());
     }
     JsonFactory jsonFactory = new JsonFactory();
