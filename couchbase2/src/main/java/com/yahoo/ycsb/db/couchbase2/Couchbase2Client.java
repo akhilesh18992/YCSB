@@ -455,10 +455,8 @@ public class Couchbase2Client extends DB {
     try {
       String docId = formatId(table, key);
       if (kv) {
-        System.err.println("kkkkkkkkkkkkkkkkkkk");
         return insertKvJson(docId, values);
       } else {
-        System.err.println("nnnnnnnnnnnnnnnnnnnn");
         return insertN1qlJson(docId, values);
       }
     } catch (Exception ex) {
@@ -575,7 +573,6 @@ public class Couchbase2Client extends DB {
   private Status insertN1qlJson(final String docId, final HashMap<String, String> values)
     throws Exception {
     String insertQuery = "INSERT INTO `" + bucketName + "`(KEY,VALUE) VALUES ($1,$2)";
-    System.err.println("===================================================");
     N1qlQueryResult queryResult = bucket.query(N1qlQuery.parameterized(
         insertQuery,
         JsonArray.from(docId, valuesToJsonObjectJson(values)),
@@ -996,8 +993,6 @@ public class Couchbase2Client extends DB {
   private static JsonObject valuesToJsonObjectJson(final HashMap<String, String> values) {
     JsonObject result = JsonObject.create();
     for (Map.Entry<String, String> entry : values.entrySet()) {
-      System.err.println(entry.getValue().toString());
-      System.err.println(JsonObject.fromJson(entry.getValue().toString()));
       result.put(entry.getKey(), JsonObject.fromJson(entry.getValue().toString()));
     }
     return result;
