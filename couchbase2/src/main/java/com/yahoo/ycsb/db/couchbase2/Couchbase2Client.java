@@ -346,7 +346,6 @@ public class Couchbase2Client extends DB {
     try {
       String docId = formatId(table, key);
       if (kv) {
-        System.err.println("||||||||||||||||||||||||");
 //        return updateKv(docId, values);
         return updateN1qlJson(docId, values);
       } else {

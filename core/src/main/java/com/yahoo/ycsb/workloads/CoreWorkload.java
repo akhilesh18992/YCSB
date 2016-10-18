@@ -610,7 +610,6 @@ public class CoreWorkload extends Workload {
    */
   @Override
   public boolean doInsert(DB db, Object threadstate) {
-    System.err.println("|||||||||||||||||||||||||||||||||||||||||||||");
     int keynum = keysequence.nextValue().intValue();
     String dbkey = buildKeyName(keynum);
 
