@@ -404,6 +404,33 @@ public class MongoDbClient extends DB {
     }
   }
 
+  @Override
+  public Status readJson(String table, String key, Set<String> fields,
+                     HashMap<String, String> result) {
+    try {
+      MongoCollection<Document> collection = database.getCollection(table);
+      Document query = new Document("field1.key", key);
+      FindIterable<Document> findIterable = collection.find(query);
+
+      if (fields != null) {
+        Document projection = new Document();
+        for (String field : fields) {
+          projection.put(field, INCLUDE);
+        }
+        findIterable.projection(projection);
+      }
+
+      Document queryResult = findIterable.first();
+
+      if (queryResult != null) {
+        fillMapJson(result, queryResult);
+      }
+      return queryResult != null ? Status.OK : Status.NOT_FOUND;
+    } catch (Exception e) {
+      System.err.println(e.toString());
+      return Status.ERROR;
+    }
+  }
   /**
    * Perform a range scan for a set of records in the database. Each field/value
    * pair from the result will be stored in a HashMap.
@@ -566,6 +593,11 @@ public class MongoDbClient extends DB {
         resultMap.put(entry.getKey(),
             new ByteArrayByteIterator(((Binary) entry.getValue()).getData()));
       }
+    }
+  }
+  protected void fillMapJson(Map<String, String> resultMap, Document obj) {
+    for (Map.Entry<String, Object> entry : obj.entrySet()) {
+      resultMap.put(entry.getKey(), entry.getValue().toString());
     }
   }
 }
