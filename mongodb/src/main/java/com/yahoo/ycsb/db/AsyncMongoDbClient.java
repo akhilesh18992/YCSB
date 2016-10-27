@@ -457,7 +457,7 @@ public class AsyncMongoDbClient extends DB {
       final MongoCollection collection = database.getCollection(table);
       final DocumentBuilder query =
 //        DOCUMENT_BUILDER.get().reset().add("_id", key);
-          DOCUMENT_BUILDER.get().reset().add("field1.key", key);
+          DOCUMENT_BUILDER.get().reset().add("field2.key", key);
 
       Document queryResult = null;
       if (fields != null) {

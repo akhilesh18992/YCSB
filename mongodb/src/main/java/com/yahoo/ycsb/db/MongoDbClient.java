@@ -381,7 +381,7 @@ public class MongoDbClient extends DB {
     try {
       MongoCollection<Document> collection = database.getCollection(table);
 //      Document query = new Document("_id", key);
-      Document query = new Document("field1.key", key);
+      Document query = new Document("field2.key", key);
       FindIterable<Document> findIterable = collection.find(query);
 
       if (fields != null) {
@@ -409,7 +409,7 @@ public class MongoDbClient extends DB {
                      HashMap<String, String> result) {
     try {
       MongoCollection<Document> collection = database.getCollection(table);
-      Document query = new Document("field1.key", key);
+      Document query = new Document("field2.key", key);
       FindIterable<Document> findIterable = collection.find(query);
 
       if (fields != null) {
