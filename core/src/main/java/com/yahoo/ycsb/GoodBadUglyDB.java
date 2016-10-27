@@ -101,6 +101,10 @@ public class GoodBadUglyDB extends DB {
         return Status.OK;
     }
 
+    public Status readJson(String table, String key, Set<String> fields, HashMap<String, String> result) {
+      delay();
+      return Status.OK;
+    }
     /**
      * Perform a range scan for a set of records in the database. Each field/value pair from the result will be stored
      * in a HashMap.

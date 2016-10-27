@@ -450,6 +450,49 @@ public class AsyncMongoDbClient extends DB {
 
   }
 
+  @Override
+  public final Status readJson(final String table, final String key,
+                           final Set<String> fields, final HashMap<String, String> result) {
+    try {
+      final MongoCollection collection = database.getCollection(table);
+      final DocumentBuilder query =
+//        DOCUMENT_BUILDER.get().reset().add("_id", key);
+          DOCUMENT_BUILDER.get().reset().add("field1.key", key);
+
+      Document queryResult = null;
+      if (fields != null) {
+        final DocumentBuilder fieldsToReturn = BuilderFactory.start();
+        final Iterator<String> iter = fields.iterator();
+        while (iter.hasNext()) {
+          fieldsToReturn.add(iter.next(), 1);
+        }
+
+        final Find.Builder fb = new Find.Builder(query);
+        fb.projection(fieldsToReturn);
+        fb.setLimit(1);
+        fb.setBatchSize(1);
+        fb.readPreference(readPreference);
+
+        final MongoIterator<Document> ci = collection.find(fb.build());
+        if (ci.hasNext()) {
+          queryResult = ci.next();
+          ci.close();
+        }
+      } else {
+        queryResult = collection.findOne(query);
+      }
+
+      if (queryResult != null) {
+        fillMapJson(result, queryResult);
+      }
+      return queryResult != null ? Status.OK : Status.NOT_FOUND;
+    } catch (final Exception e) {
+      System.err.println(e.toString());
+      return Status.ERROR;
+    }
+
+  }
+
   /**
    * Perform a range scan for a set of records in the database. Each field/value
    * pair from the result will be stored in a HashMap.
@@ -600,6 +643,14 @@ public class AsyncMongoDbClient extends DB {
       if (be.getType() == ElementType.BINARY) {
         result.put(be.getName(),
             new BinaryByteArrayIterator((BinaryElement) be));
+      }
+    }
+  }
+  protected final void fillMapJson(final HashMap<String, String> result,
+                               final Document queryResult) {
+    for (final Element be : queryResult) {
+      if (be.getType() == ElementType.BINARY) {
+        result.put(be.getName(), be.getValueAsString());
       }
     }
   }
