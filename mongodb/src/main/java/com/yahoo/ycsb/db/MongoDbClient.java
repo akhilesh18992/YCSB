@@ -46,13 +46,7 @@ import com.yahoo.ycsb.Status;
 import org.bson.Document;
 import org.bson.types.Binary;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Properties;
-import java.util.Set;
-import java.util.Vector;
+import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -254,7 +248,7 @@ public class MongoDbClient extends DB {
       HashMap<String, ByteIterator> values) {
     try {
       MongoCollection<Document> collection = database.getCollection(table);
-      Document toInsert = new Document("_id", key);
+      Document toInsert = new Document("_id", UUID.randomUUID().toString());
       for (Map.Entry<String, ByteIterator> entry : values.entrySet()) {
         toInsert.put(entry.getKey(), entry.getValue().toArray());
       }
